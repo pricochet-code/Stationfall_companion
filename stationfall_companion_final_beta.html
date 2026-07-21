@@ -1,0 +1,2079 @@
+[source: 1]<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stationfall - Assistant de Plateau Tactique</title>
+    <!-- Tailwind CSS for ultra modern gaming dashboard design -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome for fallback icons and system actions -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&family=Inter:wght@300;400;600;700&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0b0c10;
+            color: #c5c6c7;
+        }
+
+        .font-orbitron {
+            font-family: 'Orbitron', sans-serif;
+        }
+
+        .font-mono-tech {
+            font-family: 'Share Tech Mono', monospace;
+        }
+
+        /* Futuristic stylized scrollbars */
+        ::-webkit-scrollbar {
+            width: 5px;
+            height: 5px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0b0c10;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #1f2833;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #66fcf1;
+        }
+
+        /* Neon outline active indicators */
+        .neon-border {
+            box-shadow: 0 0 10px rgba(102, 252, 241, 0.2);
+            border-color: rgba(102, 252, 241, 0.4);
+        }
+
+        .token-selected {
+            outline: 3px solid #66fcf1;
+            box-shadow: 0 0 15px #66fcf1;
+            transform: scale(1.1);
+        }
+
+        .token-svg-container {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Smooth cards transitions */
+        .char-card {
+            transition: border-color 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* Style par défaut des cases d'équipement transparentes */
+        .char-slot {
+            background-color: rgba(18, 19, 26, 0.5) !important;
+            backdrop-filter: blur(4px);
+            border-color: rgba(102, 252, 241, 0.2) !important;
+            transition: all 0.2s ease;
+            aspect-ratio: 1 / 1;
+        }
+
+        .char-slot:hover {
+            background-color: rgba(102, 252, 241, 0.15) !important;
+            border-color: rgba(102, 252, 241, 0.8) !important;
+        }
+
+        /* Redimensionnement dynamique des jetons déposés dans les cases d'équipement */
+        .char-slot [id^="live-token-"] {
+            width: 100% !important;
+            height: 100% !important;
+            border: none !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            transform: none !important;
+        }
+
+        /* L'icône prend toute la place de la case */
+        .char-slot [id^="live-token-"] svg, .char-slot [id^="live-token-"] img {
+            width: 85% !important;
+            height: 85% !important;
+            max-width: 100% !important;
+            max-height: 100% !important;
+        }
+
+        /* Masque le texte d'arrière-plan (O1, O2, O3...) lorsqu'un objet est présent */
+        .char-slot:has([id^="live-token-"]) .slot-placeholder {
+            display: none !important;
+        }
+
+        /* Bordure solide de la case d'équipement lorsqu'elle contient un jeton */
+        .char-slot:has([id^="live-token-"]) {
+            border-style: solid !important;
+            border-color: rgba(102, 252, 241, 0.6) !important;
+            background-color: rgba(18, 19, 26, 0.8) !important;
+        }
+        
+        /* Animation et superposition pour le zoom des cartes */
+        .card-zoomed {
+            position: fixed !important;
+            top: 50% !important;
+            left: 50% !important;
+            transform: translate(-50%, -50%) !important;
+            z-index: 50 !important;
+            box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.8), 0 0 40px rgba(102, 252, 241, 0.3) !important;
+            transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1) !important;
+            cursor: default;
+        }
+
+        /* Mise à l'échelle dynamique des jetons sur l'image lors du zoom */
+        .card-zoomed .card-body [id^="live-token-"] {
+            transform: translate(-50%, -50%) scale(var(--token-scale, 1)) !important;
+        }
+
+        .card-zoomed .card-body [id^="live-token-"]:hover {
+            transform: translate(-50%, -50%) scale(calc(var(--token-scale, 1) * 1.1)) !important;
+        }
+
+        .card-zoomed .card-body [id^="live-token-"]:active {
+            transform: translate(-50%, -50%) scale(calc(var(--token-scale, 1) * 0.95)) !important;
+        }
+
+        /* Gestion de la transition du panneau latéral rétractable */
+        aside {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        aside.collapsed {
+            width: 0px !important;
+            min-width: 0px !important;
+            padding: 0px !important;
+            margin: 0px !important;
+            border-right-width: 0px !important;
+            opacity: 0;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden">
+
+    <!-- UPPER NAVIGATION AND PREFERENCES HEADER -->
+    <header class="bg-[#1f2833]/90 backdrop-blur-md border-b-2 border-[#1f2833] px-4 py-2 flex items-center justify-between z-20 shrink-0">
+        <div class="flex items-center justify-between w-full gap-2 flex-nowrap">
+            
+            <!-- Logo Section & Toggle Button -->
+            <div class="flex items-center gap-3 shrink-0">
+                <h1 class="font-orbitron text-sm font-bold text-[#66fcf1] tracking-wider flex items-center gap-1.5">
+                    <i class="fa-solid fa-satellite-dish animate-pulse"></i> STATIONFALL
+                </h1>
+                <button id="toggle-sidebar-btn" onclick="toggleSidebar()" class="bg-[#0b0c10] border border-slate-700 text-slate-400 hover:text-[#66fcf1] rounded px-2.5 py-0.5 text-[11px] transition-all font-bold flex items-center justify-center gap-1" title="Masquer/Afficher les Jetons">
+                    <i id="sidebar-toggle-icon" class="fa-solid fa-chevron-left"></i>
+                </button>
+            </div>
+
+            <!-- Unified Controls Bar -->
+            <div class="flex items-center gap-3 text-[10px] sm:text-[11px] font-semibold text-slate-300">
+                
+                <!-- Active Players Counter -->
+                <div class="flex items-center gap-1">
+                    <label for="player-count" class="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Joueurs</label>
+                    <select id="player-count" class="bg-[#0b0c10] text-white border border-slate-700 rounded px-1.5 py-0.5 text-[10px] focus:outline-none focus:border-[#66fcf1] transition-all font-bold">
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                        <option value="4" selected>4</option>
+                        <option value="5">5</option>
+                        <option value="6">6</option>
+                        <option value="7">7</option>
+                        <option value="8">8</option>
+                        <option value="9">9</option>
+                    </select>
+                </div>
+
+                <div class="h-4 w-px bg-slate-800"></div>
+
+                <!-- Active Characters Counter -->
+                <div class="flex items-center gap-1">
+                    <label for="char-count" class="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Personnages</label>
+                    <div class="flex items-center bg-[#0b0c10] border border-slate-700 rounded overflow-hidden">
+                        <button onclick="changeCharCount(-1)" class="px-2 py-0.5 hover:bg-[#1f2833] text-slate-400 transition-all font-bold text-[10px]">-</button>
+                        <input type="number" id="char-count" value="12" min="12" max="20" class="w-6 text-center bg-transparent text-white text-[10px] focus:outline-none font-bold" readonly>
+                        <button onclick="changeCharCount(1)" class="px-2 py-0.5 hover:bg-[#1f2833] text-slate-400 transition-all font-bold text-[10px]">+</button>
+                    </div>
+                </div>
+
+                <div class="h-4 w-px bg-slate-800"></div>
+
+                <!-- Width Grid Cases Slider (L) -->
+                <div class="flex items-center gap-1">
+                    <label for="grid-L" class="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Largeur (L)</label>
+                    <select id="grid-L" onchange="optimizeGrid()" class="bg-[#0b0c10] text-white border border-slate-700 rounded px-1.5 py-0.5 text-[10px] focus:outline-none focus:border-[#66fcf1] transition-all font-bold">
+                        <option value="3">3</option>
+                        <option value="4" selected>4</option>
+                        <option value="5">5</option>
+                        <option value="6">6</option>
+                        <option value="7">7</option>
+                    </select>
+                </div>
+
+                <div class="h-4 w-px bg-slate-800"></div>
+
+                <!-- Proportional Zoom Control -->
+                <div class="flex items-center gap-1">
+                    <label class="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Zoom</label>
+                    <div class="flex items-center bg-[#0b0c10] border border-slate-700 rounded overflow-hidden">
+                        <button onclick="changeZoom(-0.1)" class="px-2 py-0.5 hover:bg-[#1f2833] text-slate-400 transition-all font-bold text-[10px]">-</button>
+                        <span id="zoom-display" class="w-9 text-center text-white text-[10px] font-bold">100%</span>
+                        <button onclick="changeZoom(0.1)" class="px-2 py-0.5 hover:bg-[#1f2833] text-slate-400 transition-all font-bold text-[10px]">+</button>
+                    </div>
+                    <input type="hidden" id="grid-zoom" value="1.0">
+                </div>
+
+            </div>
+        </div>
+    </header>
+
+    <!-- MAIN TWO-PANEL CORE INTERFACE -->
+    <div class="flex flex-1 overflow-hidden">
+        
+        <!-- SIDEBAR PANEL: INFINITE ITEM POOLS & PLAYER PREFERENCES -->
+        <aside class="w-[310px] bg-[#0b0c10] border-r border-[#1f2833] flex flex-col p-4 gap-4 overflow-y-auto shrink-0 select-none z-10">
+            
+            <!-- Quick Trash Bin Zone -->
+            <div id="trash-zone" class="border-2 border-dashed border-red-500/40 bg-red-950/20 hover:bg-red-950/40 text-red-400 hover:text-red-300 rounded-lg p-3 text-center text-[10px] font-bold transition-all flex items-center justify-center gap-2 cursor-pointer uppercase tracking-widest" title="Glissez un jeton ici ou cliquez dessus puis cliquez ici pour le supprimer">
+                <i class="fa-solid fa-trash-can text-sm animate-bounce"></i>
+                <span>Glisser/Cliquer pour supprimer</span>
+            </div>
+
+            <!-- Player Specific Tokens Pools -->
+            <div class="border border-slate-800 rounded-lg p-3 bg-[#12131a]/50">
+                <h3 class="text-[10px] uppercase tracking-widest text-[#66fcf1] font-orbitron border-b border-slate-800 pb-2 mb-3 flex justify-between items-center">
+                    <span>Jetons de Joueurs</span>
+                </h3>
+                <div id="players-pools" class="flex flex-col gap-3 max-h-[280px] overflow-y-auto pr-1">
+                    <!-- Loaded dynamically via JavaScript -->
+                </div>
+            </div>
+
+            <!-- Generic Character Items & Hazards -->
+            <div class="border border-slate-800 rounded-lg p-3 bg-[#12131a]/50 flex-1 flex flex-col min-h-0">
+                <h3 class="text-[10px] uppercase tracking-widest text-amber-400 font-orbitron border-b border-slate-800 pb-2 mb-3 flex justify-between items-center">
+                    <span>Jetons de Personnages</span>
+                </h3>
+                <div class="grid grid-cols-4 gap-x-2 gap-y-1 pr-1" id="character-items-pool">
+                    <!-- Populated dynamically with high-fidelity SVGs -->
+                </div>
+            </div>
+
+            <div class="text-[9px] text-slate-500 text-center uppercase tracking-widest border-t border-slate-800/60 pt-2.5">
+                Stationfall Tactical Assistant © 2026
+            </div>
+        </aside>
+
+        <!-- GAME BOARD ZONE - VERTICAL SCROLL ONLY -->
+        <main class="flex-1 bg-[#12131a] p-4 relative overflow-hidden">
+            <div id="game-viewport" class="w-full h-full overflow-y-auto overflow-x-hidden pr-1">
+                <div id="game-grid-container" class="w-full relative bg-[#0b0c10]/40 rounded-xl p-1.5 border border-slate-800/40">
+                    <div id="game-grid" class="grid gap-2.5 w-full mx-auto">
+                        <!-- Loaded dynamically via JS -->
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // List of all 27 playable characters in Stationfall
+        const STATIONFALL_CHARACTERS_LIST = [
+            "Astrochimp", "Billionaire", "Boarder", "Botanist", "Colonel", 
+            "Consort", "Corpsicle", "Counselor", "Cyborg", "Daredevil", 
+            "Digital", "Doctor", "Drones", "Engineer", "Exile", 
+            "Inspector", "Legal", "Maint. Clones", "Medical", 
+            "Microbiologist", "Operative", "Security", "Station Chief", 
+            "Stowaway", "Stranger", "Telepathic Rat", "Troubleshooter"
+        ];
+
+        // Liste des jetons uniques ayant une forme de losange native
+        const DIAMOND_UNIQUE_TOKENS = ["Preuve", "Secret X", "Assistant Numérique", "Clause de Confidentialité"];
+
+        // High fidelity Player configs
+        const COULEURS_JOUEURS = [
+            { nom: "Jaune", code: "jaune", hex: "#e6b800", bgHex: "rgba(230, 184, 0, 0.12)", textClass: "text-amber-400" },
+            { nom: "Rouge", code: "rouge", hex: "#ef4444", bgHex: "rgba(239, 68, 68, 0.12)", textClass: "text-red-400" },
+            { nom: "Vert", code: "vert", hex: "#10b981", bgHex: "rgba(16, 185, 129, 0.12)", textClass: "text-emerald-400" },
+            { nom: "Bleu", code: "bleu", hex: "#3b82f6", bgHex: "rgba(59, 130, 246, 0.12)", textClass: "text-blue-400" },
+            { nom: "Noir", code: "noir", hex: "#22252a", bgHex: "rgba(34, 37, 42, 0.5)", borderHex: "#444b57", textClass: "text-slate-200" },
+            { nom: "Blanc", code: "blanc", hex: "#f8fafc", bgHex: "rgba(248, 250, 252, 0.12)", textClass: "text-slate-100" },
+            { nom: "Rose", code: "rose", hex: "#ec4899", bgHex: "rgba(236, 72, 153, 0.12)", textClass: "text-pink-400" },
+            { nom: "Orange", code: "orange", hex: "#f97316", bgHex: "rgba(249, 115, 22, 0.12)", textClass: "text-orange-400" },
+            { nom: "Violet", code: "violet", hex: "#a855f7", bgHex: "rgba(168, 85, 247, 0.12)", textClass: "text-purple-400" }
+        ];
+
+        const TYPES_JETONS_JOUEURS = [
+            { 
+                nom: "Cube d'Influence", abrev: "I",
+                render: () => `
+                    <svg viewBox="0 0 24 24" class="w-5.5 h-5.5">
+                        <polygon points="12,3 21,8.2 12,13.4 3,8.2" fill="rgba(255,255,255,0.45)" stroke="currentColor" stroke-width="1.2"/>
+                        <polygon points="3,8.2 12,13.4 12,21 3,15.8" fill="rgba(0,0,0,0.25)" stroke="currentColor" stroke-width="1.2"/>
+                        <polygon points="12,13.4 21,8.2 21,15.8 12,21" fill="rgba(0,0,0,0.1)" stroke="currentColor" stroke-width="1.2"/>
+                    </svg>`
+            },
+            { 
+                nom: "Disque d'activation", abrev: "A",
+                render: () => `
+                    <svg viewBox="0 0 24 24" class="w-5.5 h-5.5" stroke="currentColor" stroke-width="1.5" fill="none">
+                        <circle cx="12" cy="12" r="9"/>
+                        <circle cx="12" cy="12" r="7" stroke-dasharray="2 1.5"/>
+                        <text x="12" y="15.5" font-family="'Orbitron', sans-serif" font-weight="bold" font-size="10" text-anchor="middle" fill="currentColor" stroke="none">A</text>
+                    </svg>`
+            },
+            { 
+                nom: "Bakchich", abrev: "B",
+                render: () => `
+                    <svg viewBox="0 0 24 24" class="w-5.5 h-5.5" stroke="currentColor" stroke-width="1.5" fill="none">
+                        <circle cx="12" cy="12" r="9"/>
+                        <circle cx="12" cy="12" r="7" stroke-dasharray="2 1.5"/>
+                        <text x="12" y="16" font-family="'Orbitron', sans-serif" font-weight="bold" font-size="11" text-anchor="middle" fill="currentColor" stroke="none">₿</text>
+                    </svg>`
+            },
+            { 
+                nom: "Révéler le pouvoir", abrev: "R",
+                render: () => `
+                    <svg viewBox="0 0 24 24" class="w-5 h-5" fill="currentColor">
+                        <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
+                    </svg>`
+            }
+        ];
+
+        const STATIONFALL_CHAR_TOKENS = [
+            {
+                nom: "Antimatière", label: "Antimatter", bg: "bg-[#1e3a8a]/80 text-[#93c5fd] border-[#3b82f6]/40",
+                render: () => `
+                    <img src="jeton_person/antimatiere.png" class="w-full h-full object-contain pointer-events-none" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='block';">
+                    <svg viewBox="0 0 24 24" class="w-6 h-6" style="display:none">
+                        <rect x="3" y="3" width="18" height="18" rx="4" fill="#0f1e3d" stroke="#2563eb" stroke-width="1.5"/>
+                        <g transform="rotate(-30 12 12)">
+                            <rect x="9" y="5" width="6" height="14" rx="3" fill="#ffffff" stroke="#1d4ed8" stroke-width="1"/>
+                            <path d="M9 12 L15 12" stroke="#2563eb" stroke-width="1"/>
+                            <circle cx="12" cy="8.5" r="1.5" fill="#2563eb"/>
+                            <circle cx="12" cy="15.5" r="1.5" fill="#dc2626"/>
+                        </g>
+                    </svg>`
+            },
+            {
+                nom: "Artefact", label: "Artefact", bg: "bg-[#172554]/80 text-blue-300 border-blue-500/40",
+                render: () => `
+                    <img src="jeton_person/artefact.png" class="w-full h-full object-contain pointer-events-none" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='block';">
+                    <svg viewBox="0 0 24 24" class="w-6 h-6" style="display:none">
+                        <rect x="3" y="3" width="18" height="18" rx="4" fill="#0c1735" stroke="#1d4ed8" stroke-width="1.5"/>
+                        <path d="M12 5 L18 8 L18 16 L12 19 L6 16 L6 8 Z" fill="#1e40af" stroke="#ffffff" stroke-width="1.2"/>
+                        <path d="M12 8 L15 12 L12 16 L9 12 Z" fill="#ffffff"/>
+                    </svg>`
+            },
+            {
+                nom: "Attaché Case", label: "Case", bg: "bg-blue-950/80 text-blue-200 border-blue-500/30",
+                render: () => `
+                    <img src="jeton_person/malette.png" class="w-full h-full object-contain pointer-events-none" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='block';">
+                    <svg viewBox="0 0 24 24" class="w-6 h-6" style="display:none">
+                        <rect x="3" y="3" width="18" height="18" rx="4" fill="#1b3b6f" stroke="#3b82f6" stroke-width="1.5"/>
+                        <rect x="6" y="9" width="12" height="9" rx="1.5" fill="#ffffff"/>
+                        <path d="M9 9 V7 C9 6 10 5 12 5 C14 5 15 6 15 7 V9" fill="none" stroke="#ffffff" stroke-width="1.5"/>
+                    </svg>`
+            },
+            {
+                nom: "Fletcher", label: "Fletcher", bg: "bg-[#0f172a] text-slate-300 border-slate-700",
+                render: () => `
+                    <img src="jeton_person/fletcher.png" class="w-full h-full object-contain pointer-events-none" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='block';">
+                    <svg viewBox="0 0 24 24" class="w-6 h-6" style="display:none">
+                        <circle cx="12" cy="12" r="9" fill="#1e293b" stroke="#38bdf8" stroke-width="1.5"/>
+                        <circle cx="12" cy="11.5" r="4.5" fill="#ffffff"/>
+                        <rect x="10" y="10.5" width="4" height="2" fill="#0f172a"/>
+                        <path d="M9 14 C10 15.5 14 15.5 15 14" fill="none" stroke="#000" stroke-width="1"/>
+                        <circle cx="12" cy="12" r="7" fill="none" stroke="#38bdf8" stroke-width="1" stroke-dasharray="2 1.5"/>
+                    </svg>`
+            },
+            {
+                nom: "Pistolet", label: "Pistolet", bg: "bg-red-950/80 text-red-400 border-red-500/30",
+                render: () => `
+                    <img src="jeton_person/Pistolet.png" class="w-full h-full object-contain pointer-events-none" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='block';">
+                    <svg viewBox="0 0 24 24" class="w-6 h-6" style="display:none">
+                        <rect x="3" y="3" width="18" height="18" rx="4" fill="#991b1b" stroke="#ef4444" stroke-width="1.5"/>
+                        <path d="M7 8 H15 V11 H13 V16 H10 V13 H7 Z" fill="#ffffff"/>
+                        <path d="M15 9.5 H17 V10.5 H15 Z" fill="#ffffff"/>
+                    </svg>`
+            },
+            {
+                nom: "Matraque", label: "Matraque", bg: "bg-yellow-950/80 text-yellow-400 border-yellow-500/30",
+                render: () => `
+                    <img src="jeton_person/clé.png" class="w-full h-full object-contain pointer-events-none" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='block';">
+                    <svg viewBox="0 0 24 24" class="w-6 h-6" style="display:none">
+                        <rect x="3" y="3" width="18" height="18" rx="4" fill="#a16207" stroke="#eab308" stroke-width="1.5"/>
+                        <g transform="rotate(45 12 12)">
+                            <rect x="10" y="4" width="4" height="13" rx="1.5" fill="#000000"/>
+                            <rect x="9.5" y="15" width="5" height="3" fill="#ffffff" rx="1"/>
+                            <path d="M10 7 H14" stroke="#eab308" stroke-width="1.5"/>
+                        </g>
+                    </svg>`
+            },
+            {
+                nom: "Casque", label: "Casque", bg: "bg-emerald-950/80 text-emerald-400 border-emerald-500/30",
+                render: () => `
+                    <img src="jeton_person/casque.png" class="w-full h-full object-contain pointer-events-none" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='block';">
+                    <svg viewBox="0 0 24 24" class="w-6 h-6" style="display:none">
+                        <rect x="3" y="3" width="18" height="18" rx="4" fill="#065f46" stroke="#10b981" stroke-width="1.5"/>
+                        <circle cx="12" cy="12" r="6" fill="#ffffff"/>
+                        <path d="M8 12 A 4 4 0 0 1 16 12" fill="none" stroke="#065f46" stroke-width="2"/>
+                        <rect x="6" y="11" width="12" height="2" rx="1" fill="#065f46"/>
+                    </svg>`
+            },
+            {
+                nom: "Jet Pack", label: "Jet Pack", bg: "bg-green-950/80 text-green-400 border-green-500/30",
+                render: () => `
+                    <img src="jeton_person/jet_pack.png" class="w-full h-full object-contain pointer-events-none" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='block';">
+                    <svg viewBox="0 0 24 24" class="w-6 h-6" style="display:none">
+                        <rect x="3" y="3" width="18" height="18" rx="4" fill="#14532d" stroke="#22c55e" stroke-width="1.5"/>
+                        <rect x="6" y="6" width="4" height="12" rx="1" fill="#ffffff"/>
+                        <rect x="14" y="6" width="4" height="12" rx="1" fill="#ffffff"/>
+                        <rect x="10" y="8" width="4" height="4" fill="#ffffff"/>
+                        <path d="M8 18 L7 21 M16 18 L17 21" stroke="#ef4444" stroke-width="1.5"/>
+                    </svg>`
+            },
+            {
+                nom: "Kompromat", label: "Kompromat", bg: "bg-purple-950/80 text-purple-400 border-purple-500/30",
+                render: () => `
+                    <svg viewBox="0 0 24 24" class="w-6 h-6">
+                        <rect x="3" y="3" width="18" height="18" rx="4" fill="#3b0764" stroke="#a855f7" stroke-width="1.5"/>
+                        <path d="M5 7 C5 6 6 5 8 5 H12 L14 7 H19 C20 7 20 8 20 9 V17 C20 18 19 19 18 19 H6 C5 19 5 18 5 17 Z" fill="#ffffff"/>
+                        <text x="12" y="15" font-family="'Orbitron', sans-serif" font-weight="bold" font-size="8" text-anchor="middle" fill="#3b0764">K</text>
+                    </svg>`
+            },
+            {
+                nom: "Secret X", label: "Secret X", bg: "bg-red-950/80 text-red-500 border-red-500/50",
+                render: () => `
+                    <img src="jeton_person/secretx.png" class="w-full h-full object-contain pointer-events-none" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='block';">
+                    <svg viewBox="0 0 24 24" class="w-6 h-6" style="display:none">
+                        <polygon points="12,3 21,12 12,21 3,12" fill="#000000" stroke="#b91c1c" stroke-width="1.5"/>
+                        <circle cx="12" cy="12" r="5" fill="#7f1d1d"/>
+                        <text x="12" y="15.5" font-family="'Share Tech Mono', monospace" font-weight="bold" font-size="11" text-anchor="middle" fill="#ef4444">X</text>
+                    </svg>`
+            },
+            {
+                nom: "Preuve", label: "Preuve", bg: "bg-violet-950/80 text-violet-300 border-violet-500/30",
+                render: () => `
+                    <img src="jeton_person/preuve.png" class="w-full h-full object-contain pointer-events-none" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='block';">
+                    <svg viewBox="0 0 24 24" class="w-6 h-6" style="display:none">
+                        <polygon points="12,3 21,12 12,21 3,12" fill="#4c1d95" stroke="#8b5cf6" stroke-width="1.5"/>
+                        <circle cx="12" cy="12" r="3.5" fill="#ffffff"/>
+                        <circle cx="12" cy="12" r="1.5" fill="#4c1d95"/>
+                    </svg>`
+            },
+            {
+                nom: "Assistant Numérique", label: "PDA", bg: "bg-orange-950/80 text-orange-400 border-orange-500/30",
+                render: () => `
+                    <img src="jeton_person/données.png" class="w-full h-full object-contain pointer-events-none" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='block';">
+                    <svg viewBox="0 0 24 24" class="w-6 h-6" style="display:none">
+                        <polygon points="12,3 21,12 12,21 3,12" fill="#7c2d12" stroke="#f97316" stroke-width="1.5"/>
+                        <rect x="9" y="8" width="6" height="8" rx="1" fill="#ffffff"/>
+                        <line x1="10" y1="11" x2="14" y2="11" stroke="#7c2d12" stroke-width="1"/>
+                        <line x1="10" y1="13" x2="13" y2="13" stroke="#7c2d12" stroke-width="1"/>
+                    </svg>`
+            },
+            {
+                nom: "Clause de Confidentialité", label: "NDA", bg: "bg-blue-950/80 text-blue-400 border-blue-500/30",
+                render: () => `
+                    <img src="jeton_person/dossier.png" class="w-full h-full object-contain pointer-events-none" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='block';">
+                    <svg viewBox="0 0 24 24" class="w-6 h-6" style="display:none">
+                        <polygon points="12,3 21,12 12,21 3,12" fill="#1e3a8a" stroke="#3b82f6" stroke-width="1.5"/>
+                        <rect x="9" y="7" width="6" height="10" rx="1" fill="#ffffff"/>
+                        <rect x="11" y="11" width="2" height="2" fill="#1e3a8a"/>
+                        <path d="M11 11 V10 C11 9 13 9 13 10 V11" fill="none" stroke="#1e3a8a" stroke-width="0.8"/>
+                    </svg>`
+            },
+            {
+                nom: "Nanogel", label: "Nanogel", bg: "bg-emerald-950/80 text-emerald-300 border-emerald-500/30",
+                render: () => `
+                    <img src="jeton_person/nanogel.png" class="w-full h-full object-contain pointer-events-none" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='block';">
+                    <svg viewBox="0 0 24 24" class="w-6 h-6" style="display:none">
+                        <rect x="3" y="3" width="18" height="18" rx="4" fill="#064e3b" stroke="#10b981" stroke-width="1.5"/>
+                        <path d="M3 21 L21 3" stroke="#ffffff" stroke-dasharray="2 1.5" stroke-width="1.2"/>
+                        <g transform="rotate(45 12 12)">
+                            <rect x="10" y="6" width="4" height="10" rx="1.5" fill="#ffffff"/>
+                            <rect x="10" y="4" width="4" height="2" fill="#10b981"/>
+                            <text x="12" y="12" font-family="'Inter', sans-serif" font-weight="bold" font-size="5.5" text-anchor="middle" fill="#064e3b">1</text>
+                        </g>
+                    </svg>`
+            },
+            {
+                nom: "Grenade", label: "Grenade", bg: "bg-red-950/80 text-red-400 border-red-500/30",
+                render: () => `
+                    <img src="jeton_person/bombe.png" class="w-full h-full object-contain pointer-events-none" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='block';">
+                    <svg viewBox="0 0 24 24" class="w-6 h-6" style="display:none">
+                        <rect x="3" y="3" width="18" height="18" rx="4" fill="#7f1d1d" stroke="#ef4444" stroke-width="1.5"/>
+                        <circle cx="12" cy="13" r="5.5" fill="#ffffff"/>
+                        <rect x="11" y="6.5" width="2" height="2" fill="#ffffff"/>
+                        <circle cx="12" cy="13" r="3.5" fill="none" stroke="#7f1d1d" stroke-dasharray="1.5 1.5" stroke-width="1"/>
+                    </svg>`
+            },
+            {
+                nom: "Contaminé", label: "Contaminé", bg: "bg-slate-900/80 text-slate-400 border-slate-700",
+                render: () => `
+                    <img src="jeton_person/contaminé.png" class="w-full h-full object-contain pointer-events-none" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='block';">
+                    <svg viewBox="0 0 24 24" class="w-6 h-6" style="display:none">
+                        <rect x="3" y="3" width="18" height="18" rx="4" fill="#030712" stroke="#ffffff" stroke-width="1.5"/>
+                        <circle cx="12" cy="12" r="3" fill="none" stroke="#ffffff" stroke-width="1.2"/>
+                        <circle cx="12" cy="10" r="2.2" fill="none" stroke="#ffffff" stroke-width="1"/>
+                        <circle cx="10.2" cy="13" r="2.2" fill="none" stroke="#ffffff" stroke-width="1"/>
+                        <circle cx="13.8" cy="13" r="2.2" fill="none" stroke="#ffffff" stroke-width="1"/>
+                    </svg>`
+            },
+            {
+                nom: "Down", label: "Down", bg: "bg-red-900/80 text-red-400 border-red-700/50",
+                render: () => `
+                    <img src="jeton_person/down.png" class="w-full h-full object-contain pointer-events-none" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='block';">
+                    <svg viewBox="0 0 24 24" class="w-6 h-6" style="display:none">
+                        <circle cx="12" cy="12" r="9" fill="#991b1b" stroke="#ef4444" stroke-width="1.5"/>
+                        <path d="M12 7v10M8 13l4 4 4-4" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>`
+            },
+            {
+                nom: "Up", label: "Up", bg: "bg-emerald-900/80 text-emerald-400 border-emerald-700/50",
+                render: () => `
+                    <img src="jeton_person/up.png" class="w-full h-full object-contain pointer-events-none" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='block';">
+                    <svg viewBox="0 0 24 24" class="w-6 h-6" style="display:none">
+                        <circle cx="12" cy="12" r="9" fill="#065f46" stroke="#10b981" stroke-width="1.5"/>
+                        <path d="M12 17V7M8 11l4-4 4 4" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>`
+            },
+            {
+                nom: "Détruit", label: "Détruit", bg: "bg-zinc-800/80 text-zinc-400 border-zinc-700/50",
+                render: () => `
+                    <img src="jeton_person/detruit.png" class="w-full h-full object-contain pointer-events-none" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='block';">
+                    <svg viewBox="0 0 24 24" class="w-6 h-6" style="display:none">
+                        <circle cx="12" cy="12" r="9" fill="#1c1917" stroke="#78716c" stroke-width="1.5"/>
+                        <path d="M7 7l10 10M17 7L7 17" stroke="#ef4444" stroke-width="2" stroke-linecap="round"/>
+                    </svg>`
+            }
+        ];
+
+        // State trackers for user action logic
+        let activeSelectedToken = null; 
+        let draggedElement = null; 
+
+        // --- HELPER DE COMPARAISON DES PERSONNAGES ---
+        function isChar(name, ...targets) {
+            if (!name) return false;
+            const normName = name.toLowerCase().trim();
+            return targets.some(t => normName === t.toLowerCase().trim());
+        }
+
+        // --- LOGIQUE DE DISABLEMENT DES PERSONNAGES SÉLECTIONNÉS MULTIPLES ---
+        function updateCharacterDropdowns() {
+            const selects = Array.from(document.querySelectorAll('.char-card select'));
+            const selectedValues = new Set(selects.map(s => s.value));
+
+            selects.forEach(select => {
+                const currentVal = select.value;
+                Array.from(select.options).forEach(opt => {
+                    if (opt.value !== currentVal && selectedValues.has(opt.value)) {
+                        opt.disabled = true;
+                        opt.style.color = '#64748b';
+                        opt.style.backgroundColor = '#0f172a';
+                    } else {
+                        opt.disabled = false;
+                        opt.style.color = '';
+                        opt.style.backgroundColor = '';
+                    }
+                });
+            });
+        }
+
+        // --- FONCTION DE CRÉATION DE JETONS PRÉDÉFINIS POUR L'INVENTAIRE ---
+        function createPresetToken(type, locked = false) {
+            const itemData = STATIONFALL_CHAR_TOKENS.find(t => t.nom === type);
+            if (!itemData) return null;
+
+            const token = document.createElement('div');
+            token.id = `live-token-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+            token.setAttribute('data-is-player', 'false');
+            token.setAttribute('data-type', itemData.nom);
+            token.setAttribute('data-color', 'char-item');
+            token.setAttribute('data-count', '1');
+            token.title = itemData.nom;
+
+            const classes = itemData.bg.split(' ');
+            const bgClass = classes.find(c => c.startsWith('bg-')) || '';
+            const textClass = classes.find(c => c.startsWith('text-')) || '';
+            const borderClass = classes.find(c => c.startsWith('border-') && c !== 'border') || 'border-slate-700/50';
+
+            if (locked) {
+                token.setAttribute('data-locked', 'true');
+                token.className = `w-6 h-6 rounded flex items-center justify-center border shadow-md select-none shrink-0 relative ${bgClass} ${textClass} ${borderClass} opacity-90 cursor-not-allowed`;
+                token.draggable = false;
+            } else {
+                token.className = `w-6 h-6 rounded flex items-center justify-center border shadow-md cursor-grab transition-all hover:scale-105 active:scale-95 select-none shrink-0 relative ${bgClass} ${textClass} ${borderClass}`;
+                setupInteractionEvents(token);
+            }
+
+            token.innerHTML = itemData.render();
+            const nestedImg = token.querySelector('img');
+            if (nestedImg) nestedImg.setAttribute('class', 'w-full h-full object-contain pointer-events-none');
+            const nestedSvg = token.querySelector('svg');
+            if (nestedSvg) nestedSvg.setAttribute('class', 'w-4 h-4 pointer-events-none');
+
+            return token;
+        }
+
+        // --- LOGIQUE DE CRÉATION D'UNE CASE D'ÉQUIPEMENT (SLOT) ---
+        function createSlotElement(slotIdx, cardBody, cardMiddle) {
+            const slot = document.createElement('div');
+            slot.className = "char-slot w-full aspect-square border border-dashed border-slate-700/60 hover:border-[#66fcf1] rounded flex items-center justify-center relative transition-all bg-[#12131a]/60 backdrop-blur-md shadow-[0_5px_15px_rgba(0,0,0,0.5)] overflow-hidden pointer-events-auto";
+            
+            const slotPlaceholder = document.createElement('span');
+            slotPlaceholder.className = "slot-placeholder text-[10px] font-orbitron font-bold text-slate-600/70 pointer-events-none select-none absolute z-0";
+            slotPlaceholder.innerText = `O${slotIdx + 1}`;
+            slot.appendChild(slotPlaceholder);
+
+            slot.addEventListener('click', (e) => {
+                const lockedToken = slot.querySelector('[data-locked="true"]');
+                if (lockedToken) return;
+
+                if (activeSelectedToken) {
+                    e.stopPropagation();
+                    
+                    const tokenType = activeSelectedToken.getAttribute('data-type');
+                    const tokenColor = activeSelectedToken.getAttribute('data-color');
+                    const charCard = slot.closest('.char-card');
+
+                    if (tokenType === 'Down') {
+                        cardMiddle.querySelector('.card-overlay-red').classList.remove('hidden');
+                        activeSelectedToken.classList.remove('token-selected');
+                        activeSelectedToken = null;
+                        recalculateTokenLimits();
+                        return;
+                    }
+                    if (tokenType === 'Up') {
+                        cardMiddle.querySelector('.card-overlay-red').classList.add('hidden');
+                        activeSelectedToken.classList.remove('token-selected');
+                        activeSelectedToken = null;
+                        recalculateTokenLimits();
+                        return;
+                    }
+                    if (tokenType === 'Détruit') {
+                        cardMiddle.querySelector('.card-overlay-black').classList.toggle('hidden');
+                        activeSelectedToken.classList.remove('token-selected');
+                        activeSelectedToken = null;
+                        recalculateTokenLimits();
+                        return;
+                    }
+
+                    if (tokenType === 'A') {
+                        document.querySelectorAll(`[id^="live-token-"][data-type="A"]`).forEach(t => {
+                            if (t.getAttribute('data-color').toLowerCase() === tokenColor.toLowerCase() && t !== activeSelectedToken) {
+                                t.remove();
+                            }
+                        });
+                    }
+                    
+                    const UNIQUE_PER_CHAR = ["Kompromat", ...DIAMOND_UNIQUE_TOKENS];
+                    if (UNIQUE_PER_CHAR.includes(tokenType) && charCard) {
+                        charCard.querySelectorAll(`[id^="live-token-"][data-type="${tokenType}"]`).forEach(t => {
+                            if (t !== activeSelectedToken) t.remove();
+                        });
+                    }
+
+                    const liveTokens = Array.from(slot.children).filter(child => child.id && child.id.startsWith('live-token-'));
+                    if (liveTokens.length > 0) {
+                        liveTokens.forEach(t => {
+                            if (t.getAttribute('data-locked') !== 'true') t.remove();
+                        });
+                    }
+
+                    createAndAppendNewToken(activeSelectedToken, slot);
+                    
+                    if (activeSelectedToken.id && activeSelectedToken.id.startsWith('live-token-')) {
+                        activeSelectedToken.remove();
+                    }
+
+                    activeSelectedToken.classList.remove('token-selected');
+                    activeSelectedToken = null;
+                }
+                recalculateTokenLimits();
+            });
+
+            slot.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                slot.classList.add('bg-[#66fcf1]/5', 'border-[#66fcf1]/30');
+            });
+
+            slot.addEventListener('dragleave', () => {
+                slot.classList.remove('bg-[#66fcf1]/5', 'border-[#66fcf1]/30');
+            });
+
+            slot.addEventListener('drop', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                slot.classList.remove('bg-[#66fcf1]/5', 'border-[#66fcf1]/30');
+
+                const lockedToken = slot.querySelector('[data-locked="true"]');
+                if (lockedToken) return;
+
+                if (draggedElement) {
+                    const tokenType = draggedElement.getAttribute('data-type');
+                    const tokenColor = draggedElement.getAttribute('data-color');
+                    const charCard = slot.closest('.char-card');
+
+                    if (tokenType === 'Down') {
+                        cardMiddle.querySelector('.card-overlay-red').classList.remove('hidden');
+                        draggedElement = null;
+                        recalculateTokenLimits();
+                        return;
+                    }
+                    if (tokenType === 'Up') {
+                        cardMiddle.querySelector('.card-overlay-red').classList.add('hidden');
+                        draggedElement = null;
+                        recalculateTokenLimits();
+                        return;
+                    }
+                    if (tokenType === 'Détruit') {
+                        cardMiddle.querySelector('.card-overlay-black').classList.toggle('hidden');
+                        draggedElement = null;
+                        recalculateTokenLimits();
+                        return;
+                    }
+
+                    if (tokenType === 'A') {
+                        document.querySelectorAll(`[id^="live-token-"][data-type="A"]`).forEach(t => {
+                            if (t.getAttribute('data-color').toLowerCase() === tokenColor.toLowerCase() && t !== draggedElement) {
+                                t.remove();
+                            }
+                        });
+                    }
+                    
+                    const UNIQUE_PER_CHAR = ["Kompromat", ...DIAMOND_UNIQUE_TOKENS];
+                    if (UNIQUE_PER_CHAR.includes(tokenType) && charCard) {
+                        charCard.querySelectorAll(`[id^="live-token-"][data-type="${tokenType}"]`).forEach(t => {
+                            if (t !== draggedElement) t.remove();
+                        });
+                    }
+
+                    const liveTokens = Array.from(slot.children).filter(child => child.id && child.id.startsWith('live-token-'));
+                    if (liveTokens.length > 0) {
+                        liveTokens.forEach(t => {
+                            if (t.getAttribute('data-locked') !== 'true') t.remove();
+                        });
+                    }
+
+                    if (draggedElement.id && draggedElement.id.startsWith('live-token-')) {
+                        if (draggedElement.getAttribute('data-split-drag') === 'true') {
+                            createAndAppendNewToken(draggedElement, slot);
+                            draggedElement.removeAttribute('data-split-drag');
+                        } else {
+                            draggedElement.style.position = '';
+                            draggedElement.style.left = '';
+                            draggedElement.style.top = '';
+                            draggedElement.style.transform = '';
+                            draggedElement.removeAttribute('data-x');
+                            draggedElement.removeAttribute('data-y');
+                            
+                            draggedElement.classList.remove('w-6', 'h-6', 'w-9', 'h-9');
+                            draggedElement.classList.add('w-6', 'h-6');
+                            const svg = draggedElement.querySelector('svg');
+                            if (svg) svg.setAttribute('class', 'w-4 h-4 pointer-events-none');
+                            
+                            if (DIAMOND_UNIQUE_TOKENS.includes(tokenType)) {
+                                draggedElement.classList.remove('rounded', 'border', 'shadow-md', 'bg-purple-950/80', 'bg-red-950/80', 'bg-orange-950/80', 'bg-blue-950/80');
+                                draggedElement.classList.add('bg-transparent', 'border-none', 'shadow-none');
+                                draggedElement.style.backgroundColor = 'transparent';
+                                draggedElement.style.border = 'none';
+                                draggedElement.style.boxShadow = 'none';
+                            }
+
+                            slot.appendChild(draggedElement);
+                        }
+                    } else {
+                        createAndAppendNewToken(draggedElement, slot);
+                    }
+                }
+                recalculateTokenLimits();
+            });
+
+            return slot;
+        }
+
+        // --- GESTION DYNAMIQUE DE L'INVENTAIRE ET DE LA COLONNE D'ÉQUIPEMENT ---
+        function updateCardInventory(card, charName) {
+            const cardMiddle = card.querySelector('.card-middle');
+            if (!cardMiddle) return;
+            const rightColumn = cardMiddle.querySelector('.right-column');
+            const cardBody = cardMiddle.querySelector('.card-body');
+
+            // 1. Suppression/Masquage de la piste Medical si le personnage n'est pas "Medical"
+            let existingMedTrack = cardMiddle.querySelector('.medical-track');
+            if (existingMedTrack) {
+                existingMedTrack.remove();
+            }
+
+            // 2. Traitement "Assistant Numérique" / "Rat Télépathe" : Masquer la colonne d'objets
+            if (isChar(charName, "Digital", "Assistant Numérique") || isChar(charName, "Telepathic Rat", "Rat Télépathe")) {
+                if (rightColumn) rightColumn.style.display = 'none';
+            } 
+            // 3. Traitement "Drones" : 4 places, dont les 2 du milieu remplies de clés verrouillées
+            else if (isChar(charName, "Drones")) {
+                if (rightColumn) {
+                    rightColumn.style.display = 'flex';
+                    rightColumn.innerHTML = '';
+                    
+                    for (let slotIdx = 0; slotIdx < 4; slotIdx++) {
+                        const slot = createSlotElement(slotIdx, cardBody, cardMiddle);
+                        if (slotIdx === 1 || slotIdx === 2) {
+                            const keyToken = createPresetToken("Matraque", true);
+                            if (keyToken) slot.appendChild(keyToken);
+                        }
+                        rightColumn.appendChild(slot);
+                    }
+                }
+            } 
+            // 4. Traitement Standard (3 places) et cas spécifiques
+            else {
+                if (rightColumn) {
+                    rightColumn.style.display = 'flex';
+                    rightColumn.innerHTML = '';
+
+                    const slots = [];
+                    for (let slotIdx = 0; slotIdx < 3; slotIdx++) {
+                        const slot = createSlotElement(slotIdx, cardBody, cardMiddle);
+                        slots.push(slot);
+                        rightColumn.appendChild(slot);
+                    }
+
+                    // Presets d'inventaire
+                    if (isChar(charName, "Boarder", "Pirate")) {
+                        const pistol = createPresetToken("Pistolet", false);
+                        const key = createPresetToken("Matraque", false);
+                        const helmet = createPresetToken("Casque", false);
+                        if (pistol) slots[0].appendChild(pistol);
+                        if (key) slots[1].appendChild(key);
+                        if (helmet) slots[2].appendChild(helmet);
+                    } else if (isChar(charName, "Colonel")) {
+                        const pistol = createPresetToken("Pistolet", false);
+                        if (pistol) slots[0].appendChild(pistol);
+                    } else if (isChar(charName, "Corpsicle", "Cryomamie")) {
+                        const helmet = createPresetToken("Casque", true);
+                        if (helmet) slots[2].appendChild(helmet);
+                    } else if (isChar(charName, "Security", "Robot Vigile")) {
+                        const pistol = createPresetToken("Pistolet", true);
+                        if (pistol) slots[0].appendChild(pistol);
+                    } else if (isChar(charName, "Engineer", "Mécano")) {
+                        const key = createPresetToken("Matraque", false);
+                        if (key) slots[1].appendChild(key);
+                    }
+                }
+            }
+
+            // 5. Traitement "Medical" (Medical Robot) : Ajouter la piste 1 à 11+
+            if (isChar(charName, "Medical", "Medical Robot") && !isChar(charName, "Doctor")) {
+                const medicalTrack = document.createElement('div');
+                medicalTrack.className = "medical-track absolute bottom-1 left-1.5 z-20 flex items-center justify-between gap-0.5 bg-[#0b0c10]/95 p-1 rounded border border-emerald-500/50 backdrop-blur-sm pointer-events-auto shadow-md";
+                
+                if (isChar(charName, "Digital", "Assistant Numérique") || isChar(charName, "Telepathic Rat", "Rat Télépathe")) {
+                    medicalTrack.style.right = "6px";
+                } else {
+                    medicalTrack.style.right = "calc(22% + 6px)";
+                }
+
+                const boxes = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11+"];
+                const starBoxes = ["1", "2", "3", "4", "6", "8", "11+"];
+
+                boxes.forEach(val => {
+                    const box = document.createElement('div');
+                    box.className = "medical-box flex-1 h-5 flex items-center justify-center relative border border-slate-700/80 rounded text-[9px] font-mono-tech cursor-pointer select-none bg-[#12131a] text-slate-300 hover:border-[#66fcf1] transition-all";
+                    box.setAttribute('data-val', val);
+
+                    const numSpan = document.createElement('span');
+                    numSpan.className = "leading-none font-bold";
+                    numSpan.innerText = val;
+                    box.appendChild(numSpan);
+
+                    if (starBoxes.includes(val)) {
+                        const star = document.createElement('i');
+                        star.className = "fa-solid fa-star text-[5px] text-amber-400 absolute top-0.5 right-0.5 pointer-events-none";
+                        box.appendChild(star);
+                    }
+
+                    box.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const isAlreadyChecked = box.classList.contains('active-med-box');
+                        medicalTrack.querySelectorAll('.medical-box').forEach(b => {
+                            b.classList.remove('active-med-box', 'bg-[#66fcf1]', 'text-black', 'font-extrabold', 'border-[#66fcf1]', 'shadow-[0_0_8px_rgba(102,252,241,0.8)]');
+                            b.classList.add('bg-[#12131a]', 'text-slate-300');
+                        });
+                        if (!isAlreadyChecked) {
+                            box.classList.remove('bg-[#12131a]', 'text-slate-300');
+                            box.classList.add('active-med-box', 'bg-[#66fcf1]', 'text-black', 'font-extrabold', 'border-[#66fcf1]', 'shadow-[0_0_8px_rgba(102,252,241,0.8)]');
+                        }
+                    });
+
+                    medicalTrack.appendChild(box);
+                });
+
+                cardMiddle.appendChild(medicalTrack);
+            }
+
+            recalculateTokenLimits();
+        }
+
+        // --- LOGIQUE DE ZOOM DES CARTES INDIVIDUELLES ---
+        let currentlyZoomedCard = null;
+
+        const zoomOverlay = document.createElement('div');
+        zoomOverlay.className = "fixed inset-0 z-40 hidden cursor-zoom-out";
+        document.body.appendChild(zoomOverlay);
+
+        zoomOverlay.addEventListener('click', () => {
+            if (currentlyZoomedCard) {
+                unzoomCard(currentlyZoomedCard.card, currentlyZoomedCard.btn);
+            }
+        });
+
+        function zoomCard(card, btn) {
+            if (currentlyZoomedCard) unzoomCard(currentlyZoomedCard.card, currentlyZoomedCard.btn);
+            
+            const origWidth = card.offsetWidth;
+            card.setAttribute('data-orig-width', origWidth);
+            
+            currentlyZoomedCard = { card, btn };
+            
+            zoomOverlay.classList.remove('hidden');
+            card.classList.add('card-zoomed');
+            
+            if (btn) btn.innerHTML = `<i class="fa-solid fa-compress"></i>`;
+            
+            calculateZoomDimensions(card);
+        }
+
+        function unzoomCard(card, btn) {
+            currentlyZoomedCard = null;
+            zoomOverlay.classList.add('hidden');
+            card.classList.remove('card-zoomed');
+            
+            if (btn) btn.innerHTML = `<i class="fa-solid fa-expand"></i>`;
+            optimizeGrid();
+        }
+
+        function calculateZoomDimensions(card) {
+            const padding = 80;
+            const availableWidth = window.innerWidth - padding;
+            const availableHeight = window.innerHeight - padding;
+            const extraHeight = 28;
+            
+            let finalCardHeight = availableHeight;
+            let finalCardWidth = (finalCardHeight - extraHeight) * 1.5;
+            
+            if (finalCardWidth > availableWidth) {
+                finalCardWidth = availableWidth;
+                finalCardHeight = (finalCardWidth / 1.5) + extraHeight;
+            }
+            
+            const origWidth = parseFloat(card.getAttribute('data-orig-width')) || 100;
+            const scaleFactor = finalCardWidth / origWidth;
+            card.style.setProperty('--token-scale', scaleFactor);
+            
+            card.style.width = `${finalCardWidth}px`;
+            card.style.height = `${finalCardHeight}px`;
+        }
+
+        // --- LOGIQUE DE RETRACTATION DE LA SIDEBAR ---
+        function toggleSidebar() {
+            const aside = document.querySelector('aside');
+            const icon = document.getElementById('sidebar-toggle-icon');
+            if (aside.classList.contains('collapsed')) {
+                aside.classList.remove('collapsed');
+                icon.className = "fa-solid fa-chevron-left";
+            } else {
+                aside.classList.add('collapsed');
+                icon.className = "fa-solid fa-chevron-right";
+            }
+            setTimeout(optimizeGrid, 310);
+        }
+
+        // --- LOGIQUE ZOOM GENERAL DE GRILLE ---
+        function changeZoom(diff) {
+            const zoomInput = document.getElementById('grid-zoom');
+            const zoomDisplay = document.getElementById('zoom-display');
+            let currentZoom = parseFloat(zoomInput.value) || 1.0;
+            currentZoom += diff;
+            if (currentZoom < 0.6) currentZoom = 0.6;
+            if (currentZoom > 2.5) currentZoom = 2.5;
+            zoomInput.value = currentZoom.toFixed(1);
+            zoomDisplay.innerText = `${Math.round(currentZoom * 100)}%`;
+            optimizeGrid();
+        }
+
+        // --- FONCTION DE RE-CALCUL ANTI-SUPERPOSITION DE JETONS ---
+        function getNonOverlappingPosition(cardBody, x, y, excludeToken = null) {
+            const tokens = Array.from(cardBody.querySelectorAll('[id^="live-token-"]')).filter(t => t !== excludeToken);
+            let adjustedX = x;
+            let adjustedY = y;
+            const minDistance = 14;
+            let overlapFound = true;
+            let attempts = 0;
+
+            while (overlapFound && attempts < 150) {
+                overlapFound = false;
+                for (let token of tokens) {
+                    const tx = parseFloat(token.getAttribute('data-x'));
+                    const ty = parseFloat(token.getAttribute('data-y'));
+                    if (!isNaN(tx) && !isNaN(ty)) {
+                        const dx = (adjustedX - tx) * 1.5;
+                        const dy = adjustedY - ty;
+                        const dist = Math.hypot(dx, dy);
+                        
+                        if (dist < minDistance) {
+                            overlapFound = true;
+                            const angle = attempts * 0.4;
+                            const radius = 1.5 + attempts * 0.25;
+                            adjustedX = x + Math.cos(angle) * radius;
+                            adjustedY = y + Math.sin(angle) * radius;
+                            adjustedX = Math.max(6, Math.min(94, adjustedX));
+                            adjustedY = Math.max(8, Math.min(92, adjustedY));
+                            break;
+                        }
+                    }
+                }
+                attempts++;
+            }
+            return { x: adjustedX, y: adjustedY };
+        }
+
+        function recalculateTokenLimits() {
+            const liveTokens = document.querySelectorAll('[id^="live-token-"]');
+            
+            const counts = {};
+            COULEURS_JOUEURS.forEach(p => {
+                counts[p.hex.toLowerCase()] = { I: 0, B: 0, A: 0, R: 0 };
+            });
+
+            liveTokens.forEach(token => {
+                const color = token.getAttribute('data-color').toLowerCase();
+                const type = token.getAttribute('data-type');
+                const count = parseInt(token.getAttribute('data-count') || '1');
+                if (counts[color] && counts[color][type] !== undefined) {
+                    counts[color][type] += count;
+                }
+            });
+
+            COULEURS_JOUEURS.forEach(p => {
+                const playerGrid = document.querySelector(`[data-player-color="${p.hex.toLowerCase()}"]`);
+                if (!playerGrid) return;
+
+                const cubeBtn = playerGrid.querySelector(`[data-type="I"]`);
+                if (cubeBtn) {
+                    const currentCubes = counts[p.hex.toLowerCase()]['I'] || 0;
+                    cubeBtn.title = `Cube d'Influence - ${p.nom} (${currentCubes}/8 posés)`;
+                    
+                    let limitBadge = cubeBtn.querySelector('.inv-limit-badge');
+                    if (!limitBadge) {
+                        limitBadge = document.createElement('span');
+                        limitBadge.className = 'inv-limit-badge absolute bottom-0.5 right-0.5 text-[8px] font-extrabold px-1 rounded bg-black/85 text-cyan-400 leading-none scale-90 z-10 pointer-events-none border border-slate-800/80';
+                        cubeBtn.appendChild(limitBadge);
+                    }
+                    limitBadge.innerText = `${currentCubes}/8`;
+
+                    if (currentCubes >= 8) {
+                        cubeBtn.classList.add('opacity-25', 'grayscale', 'pointer-events-none');
+                        cubeBtn.draggable = false;
+                    } else {
+                        cubeBtn.classList.remove('opacity-25', 'grayscale', 'pointer-events-none');
+                        cubeBtn.draggable = true;
+                    }
+                }
+
+                const activationBtn = playerGrid.querySelector(`[data-type="A"]`);
+                if (activationBtn) {
+                    const currentActivations = counts[p.hex.toLowerCase()]['A'] || 0;
+                    activationBtn.title = `Disque d'activation - ${p.nom} (${currentActivations}/1 posé)`;
+                    
+                    let limitBadge = activationBtn.querySelector('.inv-limit-badge');
+                    if (!limitBadge) {
+                        limitBadge = document.createElement('span');
+                        limitBadge.className = 'inv-limit-badge absolute bottom-0.5 right-0.5 text-[8px] font-extrabold px-1 rounded bg-black/85 text-cyan-400 leading-none scale-90 z-10 pointer-events-none border border-slate-800/80';
+                        activationBtn.appendChild(limitBadge);
+                    }
+                    limitBadge.innerText = `${currentActivations}/1`;
+
+                    if (currentActivations >= 1) {
+                        activationBtn.classList.add('opacity-25', 'grayscale', 'pointer-events-none');
+                        activationBtn.draggable = false;
+                    } else {
+                        activationBtn.classList.remove('opacity-25', 'grayscale', 'pointer-events-none');
+                        activationBtn.draggable = true;
+                    }
+                }
+
+                const bakchichBtn = playerGrid.querySelector(`[data-type="B"]`);
+                if (bakchichBtn) {
+                    const currentBakchich = counts[p.hex.toLowerCase()]['B'] || 0;
+                    bakchichBtn.title = `Bakchich - ${p.nom} (${currentBakchich}/1 posé)`;
+                    
+                    let limitBadge = bakchichBtn.querySelector('.inv-limit-badge');
+                    if (!limitBadge) {
+                        limitBadge = document.createElement('span');
+                        limitBadge.className = 'inv-limit-badge absolute bottom-0.5 right-0.5 text-[8px] font-extrabold px-1 rounded bg-black/85 text-cyan-400 leading-none scale-90 z-10 pointer-events-none border border-slate-800/80';
+                        bakchichBtn.appendChild(limitBadge);
+                    }
+                    limitBadge.innerText = `${currentBakchich}/1`;
+
+                    if (currentBakchich >= 1) {
+                        bakchichBtn.classList.add('opacity-25', 'grayscale', 'pointer-events-none');
+                        bakchichBtn.draggable = false;
+                    } else {
+                        bakchichBtn.classList.remove('opacity-25', 'grayscale', 'pointer-events-none');
+                        bakchichBtn.draggable = true;
+                    }
+                }
+
+                const revealBtn = playerGrid.querySelector(`[data-type="R"]`);
+                if (revealBtn) {
+                    const currentReveals = counts[p.hex.toLowerCase()]['R'] || 0;
+                    revealBtn.title = `Révéler le pouvoir - ${p.nom} (${currentReveals}/1 posé)`;
+                    
+                    let limitBadge = revealBtn.querySelector('.inv-limit-badge');
+                    if (!limitBadge) {
+                        limitBadge = document.createElement('span');
+                        limitBadge.className = 'inv-limit-badge absolute bottom-0.5 right-0.5 text-[8px] font-extrabold px-1 rounded bg-black/85 text-cyan-400 leading-none scale-90 z-10 pointer-events-none border border-slate-800/80';
+                        revealBtn.appendChild(limitBadge);
+                    }
+                    limitBadge.innerText = `${currentReveals}/1`;
+
+                    if (currentReveals >= 1) {
+                        revealBtn.classList.add('opacity-25', 'grayscale', 'pointer-events-none');
+                        revealBtn.draggable = false;
+                    } else {
+                        revealBtn.classList.remove('opacity-25', 'grayscale', 'pointer-events-none');
+                        revealBtn.draggable = true;
+                    }
+                }
+            });
+
+            const cards = document.querySelectorAll('.char-card');
+            cards.forEach(card => {
+                const header = card.querySelector('.char-header');
+                if (!header) return;
+                
+                const nameEl = header.querySelector('select') || header.querySelector('span');
+                const uploadLabel = header.querySelector('label');
+                
+                const revealToken = card.querySelector('[id^="live-token-"][data-type="R"]');
+                if (revealToken) {
+                    const tokenColor = revealToken.getAttribute('data-color');
+                    header.style.backgroundColor = tokenColor;
+                    
+                    const matchedPlayer = COULEURS_JOUEURS.find(p => p.hex.toLowerCase() === tokenColor.toLowerCase());
+                    if (matchedPlayer) {
+                        const isLight = (matchedPlayer.code === 'blanc' || matchedPlayer.code === 'jaune');
+                        if (isLight) {
+                            if (nameEl) nameEl.style.color = '#000000';
+                            if (uploadLabel) {
+                                uploadLabel.style.backgroundColor = 'rgba(0,0,0,0.15)';
+                                uploadLabel.style.color = '#000000';
+                            }
+                        } else {
+                            if (nameEl) nameEl.style.color = '#ffffff';
+                            if (uploadLabel) {
+                                uploadLabel.style.backgroundColor = 'rgba(255,255,255,0.2)';
+                                uploadLabel.style.color = '#ffffff';
+                            }
+                        }
+                    }
+                } else {
+                    header.style.backgroundColor = '';
+                    if (nameEl) nameEl.style.color = '';
+                    if (uploadLabel) {
+                        uploadLabel.style.backgroundColor = '';
+                        uploadLabel.style.color = '';
+                    }
+                }
+            });
+        }
+
+        const playerCountSelect = document.getElementById('player-count');
+        const charCountInput = document.getElementById('char-count');
+        const playersPoolsContainer = document.getElementById('players-pools');
+        const charItemsPoolContainer = document.getElementById('character-items-pool');
+        const gameGrid = document.getElementById('game-grid');
+        const trashZone = document.getElementById('trash-zone');
+
+        function generatePlayerPools() {
+            playersPoolsContainer.innerHTML = "";
+            const numPlayers = parseInt(playerCountSelect.value);
+
+            for (let i = 0; i < numPlayers; i++) {
+                const player = COULEURS_JOUEURS[i];
+                
+                const container = document.createElement('div');
+                container.className = "flex flex-col gap-1.5 p-1.5 rounded-md border border-slate-800/80 transition-all";
+                container.style.backgroundColor = player.bgHex;
+                if (player.borderHex) container.style.borderColor = player.borderHex;
+
+                const grid = document.createElement('div');
+                grid.className = "grid grid-cols-4 gap-1";
+                grid.setAttribute('data-player-color', player.hex.toLowerCase());
+
+                TYPES_JETONS_JOUEURS.forEach((type, typeIdx) => {
+                    const token = document.createElement('div');
+                    token.className = "w-8 h-8 rounded flex items-center justify-center text-xs font-bold cursor-grab transition-all select-none border border-black/40 hover:scale-105 active:scale-95 shadow-md token-svg-container relative";
+                    token.style.backgroundColor = player.hex;
+                    token.style.color = (player.code === 'blanc' || player.code === 'jaune') ? '#000000' : '#ffffff';
+                    
+                    token.innerHTML = type.render();
+                    token.title = `${type.nom} - ${player.nom}`;
+                    
+                    token.setAttribute('data-type', type.abrev);
+                    token.setAttribute('data-color', player.hex);
+                    token.setAttribute('data-is-player', "true");
+
+                    setupInteractionEvents(token);
+                    grid.appendChild(token);
+                });
+
+                container.appendChild(grid);
+                playersPoolsContainer.appendChild(container);
+            }
+            recalculateTokenLimits();
+        }
+
+        function generateCharacterItemsPool() {
+            charItemsPoolContainer.innerHTML = "";
+            STATIONFALL_CHAR_TOKENS.forEach(item => {
+                const token = document.createElement('div');
+                token.className = `h-9 rounded flex flex-col items-center justify-center cursor-grab transition-all border shadow-sm hover:scale-105 active:scale-95 ${item.bg}`;
+                token.title = item.nom;
+                token.setAttribute('data-type', item.nom);
+                token.setAttribute('data-color', 'char-item');
+                token.setAttribute('data-is-player', "false");
+
+                const iconWrapper = document.createElement('div');
+                iconWrapper.className = "token-svg-container h-5 w-5 mt-0.5";
+                iconWrapper.innerHTML = item.render();
+                token.appendChild(iconWrapper);
+
+                const itemLabel = document.createElement('span');
+                itemLabel.className = "text-[7px] font-bold opacity-85 uppercase mt-0.5 truncate max-w-full px-1 leading-none";
+                itemLabel.innerText = item.label;
+                token.appendChild(itemLabel);
+
+                setupInteractionEvents(token);
+                charItemsPoolContainer.appendChild(token);
+            });
+        }
+
+        function setupInteractionEvents(element) {
+            element.draggable = true;
+            element.addEventListener('dragstart', (e) => {
+                if (element.getAttribute('data-locked') === 'true') {
+                    e.preventDefault();
+                    return;
+                }
+                draggedElement = element;
+                
+                const count = parseInt(element.getAttribute('data-count') || '1');
+                const isPlaced = element.id && element.id.startsWith('live-token-');
+
+                if (isPlaced && count > 1) {
+                    element.setAttribute('data-count', count - 1);
+                    updateCubeBadge(element, count - 1);
+                    element.setAttribute('data-split-drag', 'true');
+                } else {
+                    element.style.opacity = '0.4';
+                }
+
+                e.dataTransfer.setData('text/html', element.outerHTML);
+            });
+
+            element.addEventListener('dragend', () => {
+                element.style.opacity = '1';
+                
+                if (draggedElement) {
+                    if (draggedElement.getAttribute('data-split-drag') === 'true') {
+                        const count = parseInt(draggedElement.getAttribute('data-count') || '1');
+                        draggedElement.setAttribute('data-count', count + 1);
+                        updateCubeBadge(draggedElement, count + 1);
+                        draggedElement.removeAttribute('data-split-drag');
+                    }
+                }
+                draggedElement = null;
+            });
+
+            element.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (element.getAttribute('data-locked') === 'true') return;
+                
+                if (activeSelectedToken) {
+                    activeSelectedToken.classList.remove('token-selected');
+                }
+
+                if (activeSelectedToken === element) {
+                    activeSelectedToken = null;
+                    return;
+                }
+
+                activeSelectedToken = element;
+                element.classList.add('token-selected');
+            });
+        }
+
+        function updateCubeBadge(element, count) {
+            let badge = element.querySelector('.cube-count-badge');
+            if (count > 1) {
+                if (!badge) {
+                    badge = document.createElement('div');
+                    badge.className = 'cube-count-badge absolute -top-1.5 -right-1.5 bg-black text-[#66fcf1] border border-slate-700 rounded-full text-[9px] font-extrabold w-4 h-4 flex items-center justify-center pointer-events-none shadow-md z-20';
+                    element.appendChild(badge);
+                }
+                badge.innerText = count;
+            } else {
+                if (badge) {
+                    badge.remove();
+                }
+            }
+        }
+
+        function mergeCubeIntoContainer(sourceToken, container) {
+            const color = sourceToken.getAttribute('data-color');
+            const existingCube = container.querySelector(`.token-cube-influence[data-color="${color}"]`);
+            
+            if (existingCube && existingCube === sourceToken) {
+                return false;
+            }
+
+            let sourceCount = 1;
+            if (sourceToken.id && sourceToken.id.startsWith('live-token-')) {
+                if (sourceToken.getAttribute('data-split-drag') === 'true') {
+                    sourceCount = 1;
+                } else {
+                    sourceCount = parseInt(sourceToken.getAttribute('data-count') || '1');
+                }
+            }
+
+            if (existingCube) {
+                const currentCount = parseInt(existingCube.getAttribute('data-count') || '1');
+                const newCount = currentCount + sourceCount;
+                existingCube.setAttribute('data-count', newCount);
+                updateCubeBadge(existingCube, newCount);
+                
+                if (sourceToken.id && sourceToken.id.startsWith('live-token-')) {
+                    if (sourceToken.getAttribute('data-split-drag') === 'true') {
+                        sourceToken.removeAttribute('data-split-drag');
+                    } else {
+                        sourceToken.remove();
+                    }
+                }
+                return true; 
+            }
+            return false; 
+        }
+
+        function createAndAppendNewToken(source, targetTray) {
+            const tokenType = source.getAttribute('data-type');
+            const tokenColor = source.getAttribute('data-color');
+            const charCard = targetTray.closest('.char-card');
+
+            if (tokenType === 'A') {
+                document.querySelectorAll(`[id^="live-token-"][data-type="A"]`).forEach(t => {
+                    if (t.getAttribute('data-color').toLowerCase() === tokenColor.toLowerCase() && t !== source) {
+                        t.remove();
+                    }
+                });
+            }
+
+            const UNIQUE_PER_CHAR = ["Kompromat", ...DIAMOND_UNIQUE_TOKENS];
+            if (UNIQUE_PER_CHAR.includes(tokenType) && charCard) {
+                charCard.querySelectorAll(`[id^="live-token-"][data-type="${tokenType}"]`).forEach(t => {
+                    if (t !== source) t.remove();
+                });
+            }
+
+            const clone = document.createElement('div');
+            clone.id = `live-token-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+            
+            const isPlayer = source.getAttribute('data-is-player') === 'true';
+            clone.setAttribute('data-is-player', isPlayer ? 'true' : 'false');
+            clone.setAttribute('data-type', tokenType);
+            clone.setAttribute('data-color', tokenColor);
+            clone.setAttribute('data-count', '1');
+            clone.title = source.title;
+
+            clone.style.position = '';
+            clone.style.left = '';
+            clone.style.top = '';
+            clone.style.transform = '';
+            clone.removeAttribute('data-x');
+            clone.removeAttribute('data-y');
+            
+            let baseClasses = "w-6 h-6 rounded flex items-center justify-center border shadow-md cursor-grab transition-all hover:scale-105 active:scale-95 select-none shrink-0 relative";
+            if (DIAMOND_UNIQUE_TOKENS.includes(tokenType)) {
+                baseClasses = "w-6 h-6 flex items-center justify-center cursor-grab transition-all hover:scale-105 active:scale-95 select-none shrink-0 relative bg-transparent border-none shadow-none text-current";
+            }
+            
+            if (isPlayer) {
+                const bgCol = source.style.backgroundColor || tokenColor;
+                clone.style.backgroundColor = bgCol;
+                clone.style.color = source.style.color || '#ffffff';
+                
+                if (tokenColor === '#22252a' || bgCol === 'rgb(34, 37, 42)') {
+                    clone.className = `${baseClasses} border-slate-600/80`;
+                } else {
+                    clone.className = `${baseClasses} border-white/20`;
+                }
+            } else {
+                if (DIAMOND_UNIQUE_TOKENS.includes(tokenType)) {
+                    const classes = Array.from(source.classList);
+                    const textClass = classes.find(c => c.startsWith('text-')) || '';
+                    clone.className = `${baseClasses} ${textClass}`;
+                } else {
+                    const classes = Array.from(source.classList);
+                    const bgClass = classes.find(c => c.startsWith('bg-')) || '';
+                    const textClass = classes.find(c => c.startsWith('text-')) || '';
+                    const borderClass = classes.find(c => c.startsWith('border-') && c !== 'border') || 'border-slate-700/50';
+                    
+                    clone.className = `${baseClasses} ${bgClass} ${textClass} ${borderClass}`;
+                }
+            }
+            
+            const isCube = tokenType === 'I';
+            if (isCube) {
+                clone.classList.add('token-cube-influence');
+            }
+
+            const originalSvg = source.querySelector('svg');
+            const originalImg = source.querySelector('img');
+            
+            if (originalImg && originalImg.style.display !== 'none') {
+                const imgClone = originalImg.cloneNode(true);
+                imgClone.setAttribute('class', 'w-full h-full object-contain pointer-events-none');
+                clone.appendChild(imgClone);
+                
+                if (originalSvg) {
+                    const svgClone = originalSvg.cloneNode(true);
+                    svgClone.setAttribute('class', 'w-4 h-4 pointer-events-none');
+                    svgClone.style.display = 'none';
+                    clone.appendChild(svgClone);
+                }
+            } else if (originalSvg) {
+                const svgClone = originalSvg.cloneNode(true);
+                svgClone.setAttribute('class', 'w-4 h-4 pointer-events-none');
+                svgClone.style.display = 'block';
+                clone.appendChild(svgClone);
+            } else {
+                clone.innerHTML = source.innerHTML;
+                const nestedImg = clone.querySelector('img');
+                if (nestedImg) {
+                    nestedImg.setAttribute('class', 'w-full h-full object-contain pointer-events-none');
+                }
+                const nestedSvg = clone.querySelector('svg');
+                if (nestedSvg) {
+                    nestedSvg.setAttribute('class', 'w-4 h-4 pointer-events-none');
+                }
+            }
+            
+            setupInteractionEvents(clone);
+            targetTray.appendChild(clone);
+            recalculateTokenLimits();
+        }
+
+        function createAndAppendAbsoluteToken(source, targetBody, x, y) {
+            const tokenType = source.getAttribute('data-type');
+            const tokenColor = source.getAttribute('data-color');
+            const charCard = targetBody.closest('.char-card');
+
+            if (tokenType === 'A') {
+                document.querySelectorAll(`[id^="live-token-"][data-type="A"]`).forEach(t => {
+                    if (t.getAttribute('data-color').toLowerCase() === tokenColor.toLowerCase() && t !== source) {
+                        t.remove();
+                    }
+                });
+            }
+
+            const UNIQUE_PER_CHAR = ["Kompromat", ...DIAMOND_UNIQUE_TOKENS];
+            if (UNIQUE_PER_CHAR.includes(tokenType) && charCard) {
+                charCard.querySelectorAll(`[id^="live-token-"][data-type="${tokenType}"]`).forEach(t => {
+                    if (t !== source) t.remove();
+                });
+            }
+
+            const clone = document.createElement('div');
+            clone.id = `live-token-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+            
+            const isPlayer = source.getAttribute('data-is-player') === 'true';
+            clone.setAttribute('data-is-player', isPlayer ? 'true' : 'false');
+            clone.setAttribute('data-type', tokenType);
+            clone.setAttribute('data-color', tokenColor);
+            clone.setAttribute('data-count', '1');
+            clone.title = source.title;
+
+            clone.style.position = 'absolute';
+            clone.style.left = `${x}%`;
+            clone.style.top = `${y}%`;
+            clone.setAttribute('data-x', x);
+            clone.setAttribute('data-y', y);
+            
+            let sizeClass = "w-6 h-6";
+            let svgSizeClass = "w-4 h-4";
+            if (tokenType === 'A' || tokenType === 'Kompromat') {
+                sizeClass = "w-9 h-9";
+                svgSizeClass = "w-7 h-7";
+            }
+            
+            let baseClasses = `${sizeClass} rounded flex items-center justify-center border shadow-md cursor-grab transition-all select-none shrink-0 z-20 absolute`;
+            if (DIAMOND_UNIQUE_TOKENS.includes(tokenType)) {
+                baseClasses = `${sizeClass} flex items-center justify-center cursor-grab transition-all select-none shrink-0 z-20 absolute bg-transparent border-none shadow-none text-current`;
+            }
+            
+            if (isPlayer) {
+                const bgCol = source.style.backgroundColor || tokenColor;
+                clone.style.backgroundColor = bgCol;
+                clone.style.color = source.style.color || '#ffffff';
+                
+                if (tokenColor === '#22252a' || bgCol === 'rgb(34, 37, 42)') {
+                    clone.className = `${baseClasses} border-slate-600/80`;
+                } else {
+                    clone.className = `${baseClasses} border-white/20`;
+                }
+            } else {
+                if (DIAMOND_UNIQUE_TOKENS.includes(tokenType)) {
+                    const classes = Array.from(source.classList);
+                    const textClass = classes.find(c => c.startsWith('text-')) || '';
+                    clone.className = `${baseClasses} ${textClass}`;
+                } else {
+                    const classes = Array.from(source.classList);
+                    const bgClass = classes.find(c => c.startsWith('bg-')) || '';
+                    const textClass = classes.find(c => c.startsWith('text-')) || '';
+                    const borderClass = classes.find(c => c.startsWith('border-') && c !== 'border') || 'border-slate-700/50';
+                    
+                    clone.className = `${baseClasses} ${bgClass} ${textClass} ${borderClass}`;
+                }
+            }
+            
+            const isCube = tokenType === 'I';
+            if (isCube) {
+                clone.classList.add('token-cube-influence');
+            }
+
+            const originalSvg = source.querySelector('svg');
+            const originalImg = source.querySelector('img');
+            
+            if (originalImg && originalImg.style.display !== 'none') {
+                const imgClone = originalImg.cloneNode(true);
+                imgClone.setAttribute('class', 'w-full h-full object-contain pointer-events-none');
+                clone.appendChild(imgClone);
+                
+                if (originalSvg) {
+                    const svgClone = originalSvg.cloneNode(true);
+                    svgClone.setAttribute('class', `${svgSizeClass} pointer-events-none`);
+                    svgClone.style.display = 'none';
+                    clone.appendChild(svgClone);
+                }
+            } else if (originalSvg) {
+                const svgClone = originalSvg.cloneNode(true);
+                svgClone.setAttribute('class', `${svgSizeClass} pointer-events-none`);
+                svgClone.style.display = 'block';
+                clone.appendChild(svgClone);
+            } else {
+                clone.innerHTML = source.innerHTML;
+                const nestedImg = clone.querySelector('img');
+                if (nestedImg) {
+                    nestedImg.setAttribute('class', 'w-full h-full object-contain pointer-events-none');
+                }
+                const nestedSvg = clone.querySelector('svg');
+                if (nestedSvg) {
+                    nestedSvg.setAttribute('class', `${svgSizeClass} pointer-events-none`);
+                }
+            }
+            
+            clone.style.transform = 'translate(-50%, -50%) scale(1)';
+
+            setupInteractionEvents(clone);
+            targetBody.appendChild(clone);
+            recalculateTokenLimits();
+        }
+
+        trashZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            trashZone.classList.add('bg-red-900/60', 'text-white');
+        });
+
+        trashZone.addEventListener('dragleave', () => {
+            trashZone.classList.remove('bg-red-900/60', 'text-white');
+        });
+
+        trashZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            trashZone.classList.remove('bg-red-900/60', 'text-white');
+
+            if (draggedElement && draggedElement.id && draggedElement.id.startsWith('live-token-')) {
+                if (draggedElement.getAttribute('data-locked') === 'true') {
+                    return;
+                }
+                if (draggedElement.getAttribute('data-split-drag') === 'true') {
+                    draggedElement.removeAttribute('data-split-drag');
+                } else {
+                    draggedElement.remove();
+                }
+                recalculateTokenLimits();
+            }
+        });
+
+        trashZone.addEventListener('click', () => {
+            if (activeSelectedToken && activeSelectedToken.id && activeSelectedToken.id.startsWith('live-token-')) {
+                if (activeSelectedToken.getAttribute('data-locked') === 'true') {
+                    return;
+                }
+                const count = parseInt(activeSelectedToken.getAttribute('data-count') || '1');
+                if (count > 1) {
+                    activeSelectedToken.setAttribute('data-count', count - 1);
+                    updateCubeBadge(activeSelectedToken, count - 1);
+                } else {
+                    activeSelectedToken.remove();
+                    activeSelectedToken = null;
+                }
+                recalculateTokenLimits();
+            }
+        });
+
+        function changeCharCount(diff) {
+            let current = parseInt(charCountInput.value);
+            current += diff;
+            if (current < 12) current = 12;
+            if (current > 20) current = 20;
+            charCountInput.value = current;
+            generateCharacterGrid();
+        }
+
+        playerCountSelect.addEventListener('change', generatePlayerPools);
+
+        // --- CALCUL DYNAMIQUE PROPORTIONNEL DE LA GRILLE (L & ZOOM) ---
+        function optimizeGrid() {
+            const viewport = document.getElementById('game-viewport');
+            const grid = document.getElementById('game-grid');
+            if (!viewport || !grid) return;
+
+            const L = parseInt(document.getElementById('grid-L').value) || 4;
+            const zoom = parseFloat(document.getElementById('grid-zoom').value) || 1.0;
+
+            grid.style.gridTemplateColumns = `repeat(${L}, 1fr)`;
+            
+            const gap = 10;
+            const baseContainerWidth = viewport.clientWidth - 16; 
+            
+            const cardWidth = (baseContainerWidth - (L - 1) * gap) / L;
+            const finalCardWidth = cardWidth * zoom;
+
+            const extraHeight = 28; 
+            const finalCardHeight = (finalCardWidth / 1.5) + extraHeight;
+
+            grid.style.width = `${100 * zoom}%`;
+
+            const cards = document.querySelectorAll('.char-card');
+            cards.forEach(card => {
+                card.style.width = `${finalCardWidth}px`;
+                card.style.height = `${finalCardHeight}px`;
+            });
+        }
+
+        function generateCharacterGrid() {
+            const numChars = parseInt(charCountInput.value);
+            gameGrid.innerHTML = "";
+
+            for (let i = 0; i < numChars; i++) {
+                const charName = STATIONFALL_CHARACTERS_LIST[i % STATIONFALL_CHARACTERS_LIST.length];
+                
+                const card = document.createElement('div');
+                card.className = "char-card bg-[#1f2833]/40 border border-slate-800 rounded-lg flex flex-col justify-between overflow-hidden relative shadow-lg group hover:border-[#66fcf1]/50 transition-all";
+                
+                const header = document.createElement('div');
+                header.className = "char-header h-[28px] bg-[#0b0c10]/95 border-b border-slate-800/80 px-2 flex items-center justify-between z-10 shrink-0";
+                
+                const nameSelect = document.createElement('select');
+                nameSelect.className = "font-orbitron text-[10px] font-bold text-[#66fcf1] tracking-wider bg-transparent border-none outline-none focus:ring-0 cursor-pointer max-w-[70%] py-0 px-1 rounded hover:bg-slate-800/40 transition-colors";
+                
+                STATIONFALL_CHARACTERS_LIST.forEach(char => {
+                    const opt = document.createElement('option');
+                    opt.value = char;
+                    opt.innerText = char;
+                    opt.className = "bg-[#0b0c10] text-slate-200 font-sans text-xs";
+                    nameSelect.appendChild(opt);
+                });
+                nameSelect.value = charName;
+                header.appendChild(nameSelect);
+
+                // --- MODIFICATION BOUTON + POUR IMPORTATION D'IMAGE SEULEMENT SANS ZOOM ---
+                const uploadLabel = document.createElement('label');
+                uploadLabel.className = "w-5 h-5 bg-[#1f2833] hover:bg-[#66fcf1] hover:text-black text-slate-400 rounded flex items-center justify-center cursor-pointer transition-all text-xs font-bold shadow-sm";
+                uploadLabel.innerHTML = `<i class="fa-solid fa-plus text-[9px]"></i>`;
+                uploadLabel.title = "Ajouter un plateau personnalisé";
+
+                uploadLabel.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                });
+                
+                const fileInput = document.createElement('input');
+                fileInput.type = 'file';
+                fileInput.accept = 'image/*';
+                fileInput.className = 'hidden';
+
+                fileInput.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                });
+                
+                uploadLabel.appendChild(fileInput);
+
+                const cardMiddle = document.createElement('div');
+                cardMiddle.className = "card-middle flex-1 min-h-0 relative overflow-hidden bg-[#12131a]/10";
+
+                const cardBody = document.createElement('div');
+                cardBody.className = "card-body absolute inset-0 cursor-crosshair overflow-hidden transition-all bg-transparent bg-no-repeat bg-center";
+
+                const fitToggleBtn = document.createElement('button');
+                fitToggleBtn.className = "w-5 h-5 bg-[#1f2833] hover:bg-[#66fcf1] hover:text-black text-slate-400 rounded flex items-center justify-center cursor-pointer transition-all text-[10px] font-bold shadow-sm ml-1 hidden";
+                fitToggleBtn.innerHTML = `<i class="fa-solid fa-arrows-up-down-left-right"></i>`;
+                fitToggleBtn.title = "Ajustement : Étirer (100%)";
+                
+                let fitModes = ['100% 100%', 'cover', 'contain'];
+                let currentFitIdx = 0;
+                
+                fitToggleBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    currentFitIdx = (currentFitIdx + 1) % fitModes.length;
+                    cardBody.style.backgroundSize = fitModes[currentFitIdx];
+                    
+                    if (fitModes[currentFitIdx] === '100% 100%') {
+                        fitToggleBtn.innerHTML = `<i class="fa-solid fa-arrows-up-down-left-right"></i>`;
+                        fitToggleBtn.title = "Ajustement : Étirer (100%)";
+                    } else if (fitModes[currentFitIdx] === 'cover') {
+                        fitToggleBtn.innerHTML = `<i class="fa-solid fa-expand"></i>`;
+                        fitToggleBtn.title = "Ajustement : Remplir (Cover)";
+                    } else {
+                        fitToggleBtn.innerHTML = `<i class="fa-solid fa-compress"></i>`;
+                        fitToggleBtn.title = "Ajustement : Centrer (Contain)";
+                    }
+                });
+
+                const zoomToggleBtn = document.createElement('button');
+                zoomToggleBtn.className = "w-5 h-5 bg-[#1f2833] hover:bg-[#66fcf1] hover:text-black text-slate-400 rounded flex items-center justify-center cursor-pointer transition-all text-[10px] font-bold shadow-sm ml-1";
+                zoomToggleBtn.innerHTML = `<i class="fa-solid fa-expand"></i>`;
+                zoomToggleBtn.title = "Agrandir le personnage";
+
+                zoomToggleBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (currentlyZoomedCard && currentlyZoomedCard.card === card) {
+                        unzoomCard(card, zoomToggleBtn);
+                    } else {
+                        zoomCard(card, zoomToggleBtn);
+                    }
+                });
+
+                const headerControls = document.createElement('div');
+                headerControls.className = "flex items-center gap-1";
+                headerControls.appendChild(uploadLabel);
+                headerControls.appendChild(fitToggleBtn);
+                headerControls.appendChild(zoomToggleBtn);
+                header.appendChild(headerControls);
+                card.appendChild(header);
+
+                card.addEventListener('click', (e) => {
+                    const isInteractiveControl = e.target.closest('button, select, input, label, [id^="live-token-"], .char-slot, .medical-track');
+                    if (!isInteractiveControl && !activeSelectedToken) {
+                        if (!currentlyZoomedCard || currentlyZoomedCard.card !== card) {
+                            zoomCard(card, zoomToggleBtn);
+                        }
+                    }
+                });
+
+                const placeholderDiv = document.createElement('div');
+                placeholderDiv.className = "absolute inset-0 flex flex-col items-center justify-center text-slate-600/30 font-orbitron pointer-events-none select-none";
+                
+                const placeholderAbbr = document.createElement('span');
+                placeholderAbbr.className = "text-3xl font-extrabold tracking-widest";
+                placeholderAbbr.innerText = charName.substring(0, 2).toUpperCase();
+                
+                const placeholderText = document.createElement('span');
+                placeholderText.className = "text-[8px] uppercase tracking-widest mt-1";
+                placeholderText.innerText = "Plateau Vide";
+                
+                placeholderDiv.appendChild(placeholderAbbr);
+                placeholderDiv.appendChild(placeholderText);
+                cardBody.appendChild(placeholderDiv);
+
+                nameSelect.addEventListener('change', (e) => {
+                    const selectedVal = e.target.value;
+                    placeholderAbbr.innerText = selectedVal.substring(0, 2).toUpperCase();
+                    updateCardInventory(card, selectedVal);
+                    updateCharacterDropdowns();
+                });
+
+                fileInput.addEventListener('change', function(e) {
+                    e.stopPropagation();
+                    const file = e.target.files[0];
+                    if (file) {
+                        const reader = new FileReader();
+                        reader.onload = function(evt) {
+                            cardBody.style.backgroundImage = `url('${evt.target.result}')`;
+                            cardBody.style.backgroundSize = fitModes[currentFitIdx];
+                            placeholderDiv.classList.add('hidden');
+                            fitToggleBtn.classList.remove('hidden');
+                        };
+                        reader.readAsDataURL(file);
+                    }
+                });
+
+                cardBody.addEventListener('click', (e) => {
+                    if (activeSelectedToken) {
+                        e.stopPropagation();
+
+                        const tokenType = activeSelectedToken.getAttribute('data-type');
+                        const tokenColor = activeSelectedToken.getAttribute('data-color');
+                        const charCard = cardBody.closest('.char-card');
+
+                        if (tokenType === 'Down') {
+                            cardMiddle.querySelector('.card-overlay-red').classList.remove('hidden');
+                            activeSelectedToken.classList.remove('token-selected');
+                            activeSelectedToken = null;
+                            recalculateTokenLimits();
+                            return;
+                        }
+                        if (tokenType === 'Up') {
+                            cardMiddle.querySelector('.card-overlay-red').classList.add('hidden');
+                            activeSelectedToken.classList.remove('token-selected');
+                            activeSelectedToken = null;
+                            recalculateTokenLimits();
+                            return;
+                        }
+                        if (tokenType === 'Détruit') {
+                            cardMiddle.querySelector('.card-overlay-black').classList.toggle('hidden');
+                            activeSelectedToken.classList.remove('token-selected');
+                            activeSelectedToken = null;
+                            recalculateTokenLimits();
+                            return;
+                        }
+
+                        const rect = cardBody.getBoundingClientRect();
+                        const x = ((e.clientX - rect.left) / rect.width) * 100;
+                        const y = ((e.clientY - rect.top) / rect.height) * 100;
+                        
+                        let posX = Math.max(0, Math.min(100, x));
+                        let posY = Math.max(0, Math.min(100, y));
+
+                        const pos = getNonOverlappingPosition(cardBody, posX, posY);
+                        posX = pos.x;
+                        posY = pos.y;
+
+                        const isCube = activeSelectedToken.getAttribute('data-type') === 'I';
+
+                        if (tokenType === 'A') {
+                            document.querySelectorAll(`[id^="live-token-"][data-type="A"]`).forEach(t => {
+                                if (t.getAttribute('data-color').toLowerCase() === tokenColor.toLowerCase() && t !== activeSelectedToken) {
+                                    t.remove();
+                                }
+                            });
+                        }
+                        
+                        const UNIQUE_PER_CHAR = ["Kompromat", ...DIAMOND_UNIQUE_TOKENS];
+                        if (UNIQUE_PER_CHAR.includes(tokenType) && charCard) {
+                            charCard.querySelectorAll(`[id^="live-token-"][data-type="${tokenType}"]`).forEach(t => {
+                                if (t !== activeSelectedToken) t.remove();
+                            });
+                        }
+                        
+                        if (isCube) {
+                            const merged = mergeCubeIntoContainer(activeSelectedToken, cardBody);
+                            if (merged) {
+                                activeSelectedToken.classList.remove('token-selected');
+                                activeSelectedToken = null;
+                                recalculateTokenLimits();
+                                return;
+                            }
+                        }
+
+                        createAndAppendAbsoluteToken(activeSelectedToken, cardBody, posX, posY);
+
+                        if (activeSelectedToken.id && activeSelectedToken.id.startsWith('live-token-')) {
+                            activeSelectedToken.remove();
+                        }
+
+                        activeSelectedToken.classList.remove('token-selected');
+                        activeSelectedToken = null;
+                        recalculateTokenLimits();
+                    }
+                });
+
+                cardBody.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    cardBody.classList.add('bg-[#66fcf1]/10', 'neon-border');
+                });
+
+                cardBody.addEventListener('dragleave', () => {
+                    cardBody.classList.remove('bg-[#66fcf1]/10', 'neon-border');
+                });
+
+                cardBody.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    cardBody.classList.remove('bg-[#66fcf1]/10', 'neon-border');
+
+                    if (draggedElement) {
+                        const tokenType = draggedElement.getAttribute('data-type');
+                        const tokenColor = draggedElement.getAttribute('data-color');
+                        const charCard = cardBody.closest('.char-card');
+
+                        if (tokenType === 'Down') {
+                            cardMiddle.querySelector('.card-overlay-red').classList.remove('hidden');
+                            draggedElement = null;
+                            recalculateTokenLimits();
+                            return;
+                        }
+                        if (tokenType === 'Up') {
+                            cardMiddle.querySelector('.card-overlay-red').classList.add('hidden');
+                            draggedElement = null;
+                            recalculateTokenLimits();
+                            return;
+                        }
+                        if (tokenType === 'Détruit') {
+                            cardMiddle.querySelector('.card-overlay-black').classList.toggle('hidden');
+                            draggedElement = null;
+                            recalculateTokenLimits();
+                            return;
+                        }
+
+                        const rect = cardBody.getBoundingClientRect();
+                        const x = ((e.clientX - rect.left) / rect.width) * 100;
+                        const y = ((e.clientY - rect.top) / rect.height) * 100;
+
+                        let posX = Math.max(0, Math.min(100, x));
+                        let posY = Math.max(0, Math.min(100, y));
+
+                        const pos = getNonOverlappingPosition(cardBody, posX, posY, draggedElement);
+                        posX = pos.x;
+                        posY = pos.y;
+
+                        const isCube = draggedElement.getAttribute('data-type') === 'I';
+
+                        if (tokenType === 'A') {
+                            document.querySelectorAll(`[id^="live-token-"][data-type="A"]`).forEach(t => {
+                                if (t.getAttribute('data-color').toLowerCase() === tokenColor.toLowerCase() && t !== draggedElement) {
+                                    t.remove();
+                                }
+                            });
+                        }
+                        
+                        const UNIQUE_PER_CHAR = ["Kompromat", ...DIAMOND_UNIQUE_TOKENS];
+                        if (UNIQUE_PER_CHAR.includes(tokenType) && charCard) {
+                            charCard.querySelectorAll(`[id^="live-token-"][data-type="${tokenType}"]`).forEach(t => {
+                                if (t !== draggedElement) t.remove();
+                            });
+                        }
+
+                        if (isCube) {
+                            const merged = mergeCubeIntoContainer(draggedElement, cardBody);
+                            if (merged) {
+                                draggedElement = null;
+                                recalculateTokenLimits();
+                                return;
+                            }
+                        }
+
+                        if (draggedElement.id && draggedElement.id.startsWith('live-token-') && draggedElement.parentElement === cardBody) {
+                            draggedElement.style.left = `${posX}%`;
+                            draggedElement.style.top = `${posY}%`;
+                            draggedElement.setAttribute('data-x', posX);
+                            draggedElement.setAttribute('data-y', posY);
+                            
+                            if (draggedElement.getAttribute('data-split-drag') === 'true') {
+                                draggedElement.removeAttribute('data-split-drag');
+                            }
+                        } else {
+                            if (draggedElement.id && draggedElement.id.startsWith('live-token-')) {
+                                if (draggedElement.getAttribute('data-split-drag') === 'true') {
+                                    createAndAppendAbsoluteToken(draggedElement, cardBody, posX, posY);
+                                    draggedElement.removeAttribute('data-split-drag');
+                                } else {
+                                    cardBody.appendChild(draggedElement);
+                                    draggedElement.style.position = 'absolute';
+                                    draggedElement.style.left = `${posX}%`;
+                                    draggedElement.style.top = `${posY}%`;
+                                    draggedElement.style.transform = 'translate(-50%, -50%) scale(1)';
+                                    draggedElement.setAttribute('data-x', posX);
+                                    draggedElement.setAttribute('data-y', posY);
+
+                                    draggedElement.classList.remove('w-6', 'h-6', 'w-9', 'h-9');
+                                    if (tokenType === 'A' || tokenType === 'Kompromat') {
+                                        draggedElement.classList.add('w-9', 'h-9');
+                                        const svg = draggedElement.querySelector('svg');
+                                        if (svg) svg.setAttribute('class', 'w-7 h-7 pointer-events-none');
+                                    } else {
+                                        draggedElement.classList.add('w-6', 'h-6');
+                                        const svg = draggedElement.querySelector('svg');
+                                        if (svg) svg.setAttribute('class', 'w-4 h-4 pointer-events-none');
+                                    }
+
+                                    if (DIAMOND_UNIQUE_TOKENS.includes(tokenType)) {
+                                        draggedElement.classList.remove('rounded', 'border', 'shadow-md', 'bg-purple-950/80', 'bg-red-950/80', 'bg-orange-950/80', 'bg-blue-950/80');
+                                        draggedElement.classList.add('bg-transparent', 'border-none', 'shadow-none');
+                                        draggedElement.style.backgroundColor = 'transparent';
+                                        draggedElement.style.border = 'none';
+                                        draggedElement.style.boxShadow = 'none';
+                                    }
+                                }
+                            } else {
+                                createAndAppendAbsoluteToken(draggedElement, cardBody, posX, posY);
+                            }
+                        }
+                    }
+                    recalculateTokenLimits();
+                });
+
+                cardMiddle.appendChild(cardBody);
+
+                // Colonne de Droite (Conteneur pour les cases d'équipements)
+                const rightColumn = document.createElement('div');
+                rightColumn.className = "right-column absolute right-0 top-0 h-full w-[22%] min-w-[50px] p-2 flex flex-col justify-around z-10 pointer-events-none";
+                cardMiddle.appendChild(rightColumn);
+
+                const redOverlay = document.createElement('div');
+                redOverlay.className = "absolute inset-0 bg-red-600/35 pointer-events-none hidden z-30 card-overlay-red backdrop-blur-[0.5px] transition-all";
+                cardMiddle.appendChild(redOverlay);
+
+                const blackOverlay = document.createElement('div');
+                blackOverlay.className = "absolute inset-0 bg-black/70 pointer-events-none hidden z-30 card-overlay-black backdrop-blur-[1px] transition-all";
+                cardMiddle.appendChild(blackOverlay);
+
+                card.appendChild(cardMiddle);
+                gameGrid.appendChild(card);
+
+                // Initialisation de l'inventaire spécifique selon le personnage par défaut
+                updateCardInventory(card, charName);
+            }
+
+            optimizeGrid();
+            updateCharacterDropdowns();
+            recalculateTokenLimits();
+        }
+
+        window.addEventListener('resize', () => {
+            if (currentlyZoomedCard) {
+                calculateZoomDimensions(currentlyZoomedCard.card);
+            } else {
+                optimizeGrid();
+            }
+        });
+
+        window.onload = function() {
+            generatePlayerPools();
+            generateCharacterItemsPool();
+            generateCharacterGrid();
+        };
+    </script>
+</body>
+</html>
